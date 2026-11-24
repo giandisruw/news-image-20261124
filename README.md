@@ -43,8 +43,8 @@ python3 main.py
 `main.py` (Python 3.13, standard library only, no network) copies the
 bundled `entry.png` into the output directory — `$MAKEFUN_OUTPUT_DIR`,
 or `/output` when that variable is unset — as `entry.png`, then checks
-that the copy is complete by comparing its size with the source. Run it
-twice and the two outputs are byte-identical.
+that the copy is complete by comparing the SHA-256 hash of the copy
+with the source. Run it twice and the two outputs are byte-identical.
 
 ## Files
 

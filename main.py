@@ -1,68 +1,80 @@
-"""THE WORLD — Tuesday 24 November 2026, in one image.
+"""Front page for Tuesday 24 November 2026, delivered as one image.
 
-Entry program for the make.fun news-image-20261124 bounty.
+This is the entry program for the make.fun news-image-20261124 bounty.
+The finished front page already exists in this repository as
+``entry.png``; all this program does is put an exact copy of it where
+the grader looks for it.
 
-The front page itself ships with this repository as ``entry.png``. This
-program's only job is to place an exact copy of that bundled image at the
-location the grader expects, so the run is perfectly reproducible: copying
-bytes can never drift, no matter how many times it runs.
-
-Only the Python standard library is used. Nothing is fetched from the
-network and nothing is generated at run time.
+Copying bytes instead of re-rendering anything keeps the result
+identical on every run. The program uses only the Python standard
+library, touches no network, and generates nothing.
 """
 
+import hashlib
 import os
 import shutil
 import sys
 from pathlib import Path
 
-# The image bundled next to this script, and the name it must have when
-# it leaves the program.
-BUNDLED_IMAGE = "entry.png"
-OUTPUT_NAME = "entry.png"
-
-# Where the finished image goes. The harness sets this; when it does not,
-# the conventional default is used instead.
-DEFAULT_OUTPUT_DIR = "/output"
+IMAGE_NAME = "entry.png"
+FALLBACK_OUTPUT_DIR = "/output"
+OUTPUT_DIR_ENV_VAR = "MAKEFUN_OUTPUT_DIR"
 
 
-def locate_bundled_image() -> Path:
-    """Return the path of the image shipped beside this script."""
-    here = Path(__file__).resolve().parent
-    candidate = here / BUNDLED_IMAGE
-    if not candidate.is_file():
-        raise FileNotFoundError(f"bundled image missing: {candidate}")
-    return candidate
+def bundled_image() -> Path:
+    """Find the front-page image shipped alongside this script."""
+    image = Path(__file__).resolve().parent / IMAGE_NAME
+    if not image.is_file():
+        raise FileNotFoundError(f"bundled front page not found: {image}")
+    return image
 
 
-def destination_directory() -> Path:
-    """Return the output directory requested by the environment."""
-    requested = os.environ.get("MAKEFUN_OUTPUT_DIR", "").strip()
-    return Path(requested) if requested else Path(DEFAULT_OUTPUT_DIR)
+def output_directory() -> Path:
+    """Decide where the finished image belongs.
 
-
-def confirm_copy(source: Path, target: Path) -> None:
-    """Refuse to report success unless the copy matches the source.
-
-    A byte-for-byte comparison is cheap for a single image and catches a
-    truncated or interrupted write before the grader ever sees it.
+    The harness may point somewhere else through the environment; when
+    it stays quiet, the usual ``/output`` directory is used.
     """
-    if target.stat().st_size != source.stat().st_size:
-        raise RuntimeError(
-            f"copy incomplete: {target} is {target.stat().st_size} bytes, "
-            f"expected {source.stat().st_size}"
-        )
+    chosen = os.environ.get(OUTPUT_DIR_ENV_VAR, "").strip()
+    return Path(chosen) if chosen else Path(FALLBACK_OUTPUT_DIR)
+
+
+def file_digest(path: Path) -> str:
+    """Return the SHA-256 hex digest of a file's bytes."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def place_image(source: Path, directory: Path) -> Path:
+    """Copy the bundled image into ``directory`` and check the result.
+
+    The copy is only trusted after a full hash comparison, so a
+    truncated or interrupted write is caught here instead of being
+    handed to the grader as if it were fine.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    target = directory / IMAGE_NAME
+    if target.resolve() == source.resolve():
+        # The image is already where it belongs (for example when the
+        # harness points the output directory at this repository), so
+        # there is nothing to copy — just confirm it is intact.
+        if file_digest(target) != file_digest(source):
+            raise RuntimeError(f"bundled image is damaged: {target}")
+        return target
+    shutil.copyfile(source, target)
+    if file_digest(target) != file_digest(source):
+        raise RuntimeError(f"copy does not match source: {target}")
+    return target
 
 
 def main() -> int:
-    """Copy the bundled front page to the output directory."""
-    source = locate_bundled_image()
-    out_dir = destination_directory()
-    out_dir.mkdir(parents=True, exist_ok=True)
-    target = out_dir / OUTPUT_NAME
-    shutil.copyfile(source, target)
-    confirm_copy(source, target)
-    print(f"wrote {target} ({target.stat().st_size} bytes, verified)")
+    """Place the front page in the output directory and report it."""
+    source = bundled_image()
+    target = place_image(source, output_directory())
+    print(f"wrote {target} ({target.stat().st_size} bytes, sha256 verified)")
     return 0
 
 
