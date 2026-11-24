@@ -1,32 +1,32 @@
-"""Salin gambar front-page entri ke direktori output dan verifikasi salinannya.
+#!/usr/bin/env python3
+"""Salin entry.png ke direktori output lalu verifikasi salinannya.
 
-Program ini hanya menyalin satu berkas, ``entry.png``, yang berada di folder
-yang sama dengan skrip ini, ke direktori output. Nama berkas hasil salinan
-tetap ``entry.png``. Setelah menyalin, program menghitung hash SHA-256 penuh
-dari berkas sumber dan dari salinan, lalu membandingkannya untuk memastikan
-salinan byte-identik dengan sumbernya.
+Program ini menyalin gambar front-page (entry.png) yang terletak di folder
+yang sama dengan script ini ke sebuah direktori output, kemudian memastikan
+salinan tersebut identik byte demi byte dengan membandingkan hash SHA-256
+penuh dari sumber dan salinan.
 
-Direktori output diambil dari variabel lingkungan ``MAKEFUN_OUTPUT_DIR`` bila
-disetel; bila tidak, dipakai ``/output``. Bila direktori output sama dengan
-folder sumber, tidak ada penyalinan yang perlu dilakukan: program cukup
-memverifikasi berkas yang sudah ada di tempatnya dan selesai dengan sukses.
+Direktori output diambil dari variabel lingkungan MAKEFUN_OUTPUT_DIR bila
+disetel; bila tidak, dipakai /output. Nama file output selalu entry.png.
 
-Hanya memakai pustaka standar Python; tidak ada akses jaringan.
+Bila direktori output ternyata sama dengan folder sumber, tidak ada
+penyalinan yang dilakukan: file yang sudah ada di tempatnya cukup
+diverifikasi hash-nya, lalu program selesai dengan sukses.
+
+Hanya memakai Python stdlib dan tidak memakai network sama sekali.
 """
 
 import hashlib
 import os
 import shutil
 import sys
-from pathlib import Path
-
 
 SOURCE_NAME = "entry.png"
 DEFAULT_OUTPUT_DIR = "/output"
 
 
 def sha256_of(path):
-    """Hitung hash SHA-256 penuh dari sebuah berkas, dibaca per blok."""
+    """Hitung hash SHA-256 penuh dari sebuah file, dibaca per blok."""
     digest = hashlib.sha256()
     with open(path, "rb") as handle:
         while True:
@@ -37,53 +37,43 @@ def sha256_of(path):
     return digest.hexdigest()
 
 
-def resolve_output_dir():
-    """Tentukan direktori output dari lingkungan, atau pakai bawaan."""
-    configured = os.environ.get("MAKEFUN_OUTPUT_DIR", "").strip()
-    if configured:
-        return Path(configured)
-    return Path(DEFAULT_OUTPUT_DIR)
-
-
 def main():
-    script_dir = Path(__file__).resolve().parent
-    source = script_dir / SOURCE_NAME
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    source_path = os.path.join(script_dir, SOURCE_NAME)
 
-    if not source.is_file():
-        print(f"error: sumber tidak ditemukan: {source}", file=sys.stderr)
+    if not os.path.isfile(source_path):
+        print(f"error: sumber tidak ditemukan: {source_path}", file=sys.stderr)
         return 1
 
-    output_dir = resolve_output_dir()
-    destination = output_dir / SOURCE_NAME
+    output_dir = os.environ.get("MAKEFUN_OUTPUT_DIR") or DEFAULT_OUTPUT_DIR
+    # realpath (bukan abspath) supaya folder yang sama tapi diakses lewat
+    # symlink atau alias path tetap terdeteksi sebagai folder sumber, karena
+    # menyalin file ke dirinya sendiri akan crash di shutil.copyfile.
+    output_dir = os.path.realpath(output_dir)
+    destination_path = os.path.join(output_dir, SOURCE_NAME)
 
-    source_hash = sha256_of(source)
-    print(f"sumber: {source}")
-    print(f"sha256 sumber: {source_hash}")
+    source_hash = sha256_of(source_path)
 
-    if output_dir.resolve() == script_dir.resolve() or (
-        destination.exists() and destination.resolve() == source.resolve()
-    ):
-        print("tujuan sama dengan sumber; "
-              "tidak ada penyalinan, berkas sudah di tempatnya.")
-        print(f"sha256 terverifikasi: {source_hash}")
-        print("selesai: OK")
+    if os.path.realpath(script_dir) == output_dir:
+        print(f"output sama dengan folder sumber; memverifikasi {source_path}")
+        print(f"sha256: {source_hash}")
+        print("ok: file sudah berada di tempatnya dan terverifikasi")
         return 0
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(source, destination)
+    os.makedirs(output_dir, exist_ok=True)
+    shutil.copyfile(source_path, destination_path)
 
-    copied_hash = sha256_of(destination)
-    print(f"salinan: {destination}")
-    print(f"sha256 salinan: {copied_hash}")
+    copy_hash = sha256_of(destination_path)
+    print(f"sumber : {source_path} ({source_hash})")
+    print(f"salinan: {destination_path} ({copy_hash})")
 
-    if copied_hash != source_hash:
+    if copy_hash != source_hash:
         print("error: hash salinan tidak cocok dengan sumber", file=sys.stderr)
         return 1
 
-    print("verifikasi: salinan byte-identik dengan sumber")
-    print("selesai: OK")
+    print("ok: salinan byte-identik dengan sumber")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(main())
