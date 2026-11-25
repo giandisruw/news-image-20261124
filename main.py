@@ -1,19 +1,13 @@
 #!/usr/bin/env python3
-"""Salin entry.png ke direktori output lalu verifikasi salinannya.
+"""Entry program for news-image-20261124 (v2).
 
-Program ini menyalin gambar front-page (entry.png) yang terletak di folder
-yang sama dengan script ini ke sebuah direktori output, kemudian memastikan
-salinan tersebut identik byte demi byte dengan membandingkan hash SHA-256
-penuh dari sumber dan salinan.
+Copies the bundled front-page image (entry.png, in this same directory)
+to the output directory as entry.png, then verifies the copy by comparing
+SHA-256 hashes. The output directory comes from MAKEFUN_OUTPUT_DIR, or
+defaults to /output.
 
-Direktori output diambil dari variabel lingkungan MAKEFUN_OUTPUT_DIR bila
-disetel; bila tidak, dipakai /output. Nama file output selalu entry.png.
-
-Bila direktori output ternyata sama dengan folder sumber, tidak ada
-penyalinan yang dilakukan: file yang sudah ada di tempatnya cukup
-diverifikasi hash-nya, lalu program selesai dengan sukses.
-
-Hanya memakai Python stdlib dan tidak memakai network sama sekali.
+Standard library only, no network. Running it twice produces
+byte-identical output, because the copy is a verbatim copy of a fixed file.
 """
 
 import hashlib
@@ -21,57 +15,41 @@ import os
 import shutil
 import sys
 
-SOURCE_NAME = "entry.png"
-DEFAULT_OUTPUT_DIR = "/output"
+IMAGE = "entry.png"
 
 
-def sha256_of(path):
-    """Hitung hash SHA-256 penuh dari sebuah file, dibaca per blok."""
-    digest = hashlib.sha256()
-    with open(path, "rb") as handle:
-        while True:
-            block = handle.read(1024 * 1024)
-            if not block:
-                break
-            digest.update(block)
-    return digest.hexdigest()
+def sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def main():
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    source_path = os.path.join(script_dir, SOURCE_NAME)
-
-    if not os.path.isfile(source_path):
-        print(f"error: sumber tidak ditemukan: {source_path}", file=sys.stderr)
+    here = os.path.dirname(os.path.abspath(__file__))
+    src = os.path.join(here, IMAGE)
+    if not os.path.isfile(src):
+        print(f"error: {src} not found", file=sys.stderr)
         return 1
 
-    output_dir = os.environ.get("MAKEFUN_OUTPUT_DIR") or DEFAULT_OUTPUT_DIR
-    # realpath (bukan abspath) supaya folder yang sama tapi diakses lewat
-    # symlink atau alias path tetap terdeteksi sebagai folder sumber, karena
-    # menyalin file ke dirinya sendiri akan crash di shutil.copyfile.
-    output_dir = os.path.realpath(output_dir)
-    destination_path = os.path.join(output_dir, SOURCE_NAME)
+    out_dir = os.path.realpath(os.environ.get("MAKEFUN_OUTPUT_DIR") or "/output")
+    dst = os.path.join(out_dir, IMAGE)
 
-    source_hash = sha256_of(source_path)
-
-    if os.path.realpath(script_dir) == output_dir:
-        print(f"output sama dengan folder sumber; memverifikasi {source_path}")
-        print(f"sha256: {source_hash}")
-        print("ok: file sudah berada di tempatnya dan terverifikasi")
+    if os.path.realpath(here) == out_dir:
+        print(f"already in place: {src} sha256 {sha256(src)}")
         return 0
 
-    os.makedirs(output_dir, exist_ok=True)
-    shutil.copyfile(source_path, destination_path)
+    os.makedirs(out_dir, exist_ok=True)
+    shutil.copyfile(src, dst)
 
-    copy_hash = sha256_of(destination_path)
-    print(f"sumber : {source_path} ({source_hash})")
-    print(f"salinan: {destination_path} ({copy_hash})")
-
-    if copy_hash != source_hash:
-        print("error: hash salinan tidak cocok dengan sumber", file=sys.stderr)
+    src_hash, dst_hash = sha256(src), sha256(dst)
+    print(f"source: {src} {src_hash}")
+    print(f"output: {dst} {dst_hash}")
+    if src_hash != dst_hash:
+        print("error: output hash does not match source", file=sys.stderr)
         return 1
-
-    print("ok: salinan byte-identik dengan sumber")
+    print("ok: byte-identical copy")
     return 0
 
 
